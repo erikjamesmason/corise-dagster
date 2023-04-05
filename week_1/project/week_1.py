@@ -101,4 +101,11 @@ def put_s3_data_op(context, aggregation):
 
 @job
 def machine_learning_job():
-    put_redis_data_op(process_data_op(get_s3_data_op()))
+
+    a = get_s3_data_op()
+
+    b = process_data_op(a)
+
+    redis_line = put_redis_data_op(b)
+
+    s3_line = put_s3_data_op(b)
