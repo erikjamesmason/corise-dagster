@@ -14,6 +14,8 @@ from dagster import (
 )
 from pydantic import BaseModel
 
+import pandas as pd
+
 
 @usable_as_dagster_type(description="Stock data")
 class Stock(BaseModel):
@@ -50,26 +52,53 @@ def csv_helper(file_name: str) -> Iterator[Stock]:
             yield Stock.from_list(row)
 
 
+@op(config_schema={"s3_key": String})
+def get_s3_data_op(context):
+    """
+    using s3_key context (currently a static csv file) 
+    and the csv_helper function, this creates a generator for the Stock class
+    that is generated and appended to a list
+    """
+
+    stock_list = []
+    stock_list.append(next(csv_helper(context.op_config['s3_key'])))
+    return stock_list
+
+
 @op
-def get_s3_data_op():
+def process_data_op(context, stock_list):
+    """
+    using context from previous op and the returned stock_list, 
+    this op takes the stock list converting from Stock class 
+    and turning into a dictionary to turn into a Pandas DataFrame. 
+    Then it's just a matter of finding the max 
+    and pulling out the required Aggregation class attributes 
+    and readjusting their datatype
+    """
+
+    df = pd.DataFrame([dict(s) for s in stock_list])
+    high_date, high_value = df.loc[df.high == max(
+        df.high)]['date'], df.loc[df.high == max(df.high)]['high']
+
+    return Aggregation(
+        date=datetime(
+            int(high_date.dt.year),
+            int(high_date.dt.month),
+            int(high_date.dt.day)
+        ),
+        high=high_value)
+
+
+@op
+def put_redis_data_op(context, aggregation):
     pass
 
 
 @op
-def process_data_op():
-    pass
-
-
-@op
-def put_redis_data_op():
-    pass
-
-
-@op
-def put_s3_data_op():
+def put_s3_data_op(context, aggregation):
     pass
 
 
 @job
 def machine_learning_job():
-    pass
+    put_redis_data_op(process_data_op(get_s3_data_op()))
