@@ -52,7 +52,7 @@ def csv_helper(file_name: str) -> Iterator[Stock]:
             yield Stock.from_list(row)
 
 
-@op(config_schema={"s3_key": String})
+@op(config_schema={"s3_key": String}, out={"stocks": Out(dagster_type=List, description="List of Stock")})
 def get_s3_data_op(context):
     """
     using s3_key context (currently a static csv file) 
@@ -65,7 +65,11 @@ def get_s3_data_op(context):
     return stock_list
 
 
-@op
+@op(
+    ins={"stocks": In(dagster_type=List, description="List of Stock")},
+    out={"aggregation": Out(dagster_type=Aggregation,
+                            description="Aggregated value from data")}
+)
 def process_data_op(context, stock_list):
     """
     using context from previous op and the returned stock_list, 
@@ -89,13 +93,19 @@ def process_data_op(context, stock_list):
         high=high_value)
 
 
-@op
-def put_redis_data_op(context, aggregation):
+@op(
+    out={"nothing": Out(dagster_type=Nothing,
+                            description="Nothing for now, thank you!")}
+)
+def put_redis_data_op(context, Aggregation):
     pass
 
 
-@op
-def put_s3_data_op(context, aggregation):
+@op(
+    out={"nothing": Out(dagster_type=Nothing,
+                            description="Nothing for now, thank you!")}
+)
+def put_s3_data_op(context, Aggregation):
     pass
 
 
