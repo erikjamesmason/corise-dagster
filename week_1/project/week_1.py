@@ -52,21 +52,18 @@ def csv_helper(file_name: str) -> Iterator[Stock]:
             yield Stock.from_list(row)
 
 
-@op(config_schema={"s3_key": String}, out={"stocks": Out(dagster_type=List, description="List of Stock")})
+@op(config_schema={"s3_key": String}, out={"stocks": Out(dagster_type=List[Stock], description="List of Stock")})
 def get_s3_data_op(context):
     """
     using s3_key context (currently a static csv file) 
-    and the csv_helper function, this creates a generator for the Stock class
-    that is generated and appended to a list
+    and the csv_helper function, this creates a list of Stock
     """
 
-    stock_list = []
-    stock_list.append(next(csv_helper(context.op_config['s3_key'])))
-    return stock_list
+    return list(csv_helper(context.op_config['s3_key']))
 
 
 @op(
-    ins={"stocks": In(dagster_type=List, description="List of Stock")},
+    ins={"stock_list": In(dagster_type=List[Stock], description="List of Stock")},
     out={"aggregation": Out(dagster_type=Aggregation,
                             description="Aggregated value from data")}
 )
@@ -94,6 +91,8 @@ def process_data_op(context, stock_list):
 
 
 @op(
+    ins={"Aggregation": In(dagster_type=Aggregation,
+                            description="highest value of stock")},
     out={"nothing": Out(dagster_type=Nothing,
                             description="Nothing for now, thank you!")}
 )
@@ -102,6 +101,9 @@ def put_redis_data_op(context, Aggregation):
 
 
 @op(
+    
+    ins={"Aggregation": In(dagster_type=Aggregation,
+                            description="highest value of stock")},
     out={"nothing": Out(dagster_type=Nothing,
                             description="Nothing for now, thank you!")}
 )
