@@ -14,8 +14,11 @@ from dagster import (
 from workspaces.types import Aggregation, Stock
 
 
-@asset
-def get_s3_data():
+@asset(
+    config_schema={"s3_key": String},
+    required_resource_keys={"s3"},
+)
+def get_s3_data(context) -> List[Stock]:
     
     """
     from CoRise: This op reads a file from S3 (provided as a config schema) 
@@ -36,7 +39,7 @@ def get_s3_data():
 
 
 @asset
-def process_data():
+def process_data(get_s3_data) -> Aggregation:
     """
     using context from previous op and the returned stock_list, 
     this op takes the stock list converting from Stock class 
@@ -45,13 +48,15 @@ def process_data():
     and to return an Aggregation class object
     """
 
-    highest = max(stock_list, key=lambda x: x.high)
+    highest = max(get_s3_data, key=lambda x: x.high)
 
     return Aggregation(date=highest.date, high=highest.high)
 
 
-@asset
-def put_redis_data():
+@asset(
+    required_resource_keys={"redis"},
+)
+def put_redis_data(context, process_data):
     """
     from CoRise: This op relies on the redis_resource. 
     In week one, our op did not do anything besides accept the output 
@@ -69,11 +74,13 @@ def put_redis_data():
     and highest value as strings (forced with str())
     """
     context.resources.redis.put_data(
-        name=str(aggregation.date), value=str(aggregation.high))
+        name=str(process_data.date), value=str(process_data.high))
 
 
-@asset
-def put_s3_data():
+@asset(
+    required_resource_keys={"s3"},
+)
+def put_s3_data(context, process_data):
     """
     from CoRise: This op also relies on the same S3 resource as get_s3_data. 
     For the sake of this project we will use the same bucket 
@@ -89,14 +96,23 @@ def put_s3_data():
     """
 
     context.resources.s3.put_data(
-        key_name=str(aggregation.date), data=aggregation)
+        key_name=str(process_data.date), data=process_data)
 
 
 project_assets = load_assets_from_current_module()
 
+local_config = {
+    "ops": {
+        "get_s3_data": {
+            "config": {"s3_key": "prefix/stock_9.csv"},
+        },
+    },
+}
 
 machine_learning_asset_job = define_asset_job(
     name="machine_learning_asset_job",
+    selection=project_assets,
+    config=local_config
 )
 
 machine_learning_schedule = ScheduleDefinition(job=machine_learning_asset_job, cron_schedule="*/15 * * * *")
